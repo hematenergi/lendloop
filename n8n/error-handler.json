@@ -1,0 +1,56 @@
+{
+  "name": "LendLoop — Error handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "51258a02-f383-45ef-88c5-967fe977e40f",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 240]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const failure = $input.first().json;\nconst execution = failure.execution || {};\nconst error = execution.error || failure.error || {};\nreturn [{ json: {\n  workflow: failure.workflow?.name ?? \"unknown\",\n  executionId: execution.id ?? null,\n  error: error.message ?? String(error),\n  failedNode: execution.lastNodeExecuted ?? null,\n  at: new Date().toISOString()\n} }];"
+      },
+      "id": "fee7840e-f217-475a-a330-986a1e95f2db",
+      "name": "Log error (mock alert)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 240],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "content": "This workflow records the error object in its n8n execution. Replace this mock log with an Email or Slack alert node for deployment.",
+        "height": 120,
+        "width": 380
+      },
+      "id": "a603c12e-8369-4cd6-b489-cb6ae106e3ac",
+      "name": "Mock alert note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [220, 40]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log error (mock alert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

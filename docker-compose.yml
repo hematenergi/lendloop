@@ -1,0 +1,19 @@
+# Run only n8n: copy .env.example to .env, fill its n8n values, then run docker compose up -d n8n.
+# Keep N8N_ENCRYPTION_KEY stable and private; changing it can make saved credentials unreadable.
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: lendloop-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      GENERIC_TIMEZONE: Asia/Jakarta
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET}
+      CONVEX_HTTP_SECRET: ${CONVEX_HTTP_SECRET}
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

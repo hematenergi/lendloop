@@ -1,0 +1,362 @@
+{
+  "name": "LendLoop — Request notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop/request-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ae3d4656-7515-4716-b09c-8f7fddb24980",
+      "name": "Request event webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "e51a3987-57bb-48e1-9d52-213f30585ea2"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const crypto = require(\"crypto\");\nconst input = $input.first().json;\nconst body = input.body;\nconst headers = input.headers || {};\nconst rawBody = input.rawBody ?? JSON.stringify(body);\nconst secret = $env.WEBHOOK_HMAC_SECRET;\nconst headerSignature = String(headers[\"x-lendloop-signature\"] ?? headers[\"X-LendLoop-Signature\"] ?? \"\");\nconst supplied = headerSignature.startsWith(\"sha256=\") ? headerSignature.slice(7) : \"\";\nconst expected = typeof rawBody === \"string\" && secret\n  ? crypto.createHmac(\"sha256\", secret).update(rawBody, \"utf8\").digest(\"hex\")\n  : \"\";\nfunction constantTimeEqual(left, right) {\n  let mismatch = left.length ^ right.length;\n  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {\n    mismatch |= (left.charCodeAt(i) || 0) ^ (right.charCodeAt(i) || 0);\n  }\n  return mismatch === 0;\n}\nconst headerEventId = String(headers[\"x-lendloop-event-id\"] ?? headers[\"X-LendLoop-Event-Id\"] ?? \"\");\nconst verified = Boolean(secret && expected && headerSignature.startsWith(\"sha256=\") && body && typeof body.eventId === \"string\" && body.eventId === headerEventId && constantTimeEqual(expected, supplied));\nreturn [{ json: { ...input, body, verified } }];"
+      },
+      "id": "e8575587-5838-4dff-a1bf-563bded05ee1",
+      "name": "Verify HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c3c2d7df-9cdc-42a3-9391-855a659ead3f",
+              "leftValue": "={{ $json.verified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f04b0a00-3a9b-4dd1-8132-c4ea657996ef",
+      "name": "Signature valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $getWorkflowStaticData(\"global\");\ndata.processedEventIds = data.processedEventIds || {};\nconst eventId = $json.body.eventId;\nconst duplicate = Boolean(data.processedEventIds[eventId]);\nif (!duplicate) data.processedEventIds[eventId] = new Date().toISOString();\nreturn [{ json: { ...$json, eventId, duplicate } }];"
+      },
+      "id": "3ccda872-2921-4cec-92a0-bc144d089298",
+      "name": "Dedupe by eventId",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        180
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7d3879a0-1877-4e01-99cf-d3215ec9e1d6",
+              "leftValue": "={{ $json.duplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8c2cb58a-2077-4d2d-bff6-e074114ed1e0",
+      "name": "Already processed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json;\nconst body = input.body;\nconst verb = body.type === \"request.created\" ? \"requested\" : \"updated\";\nconst subject = \"LendLoop: \" + body.type + \" — \" + body.item.name;\nconst text = \"Hi \" + body.recipient.name + \", \" + body.actor.name + \" \" + verb + \" your \" + body.item.name + \" (\" + body.request.startDate + \" → \" + body.request.endDate + \"). Status: \" + body.request.status + \".\";\nreturn [{ json: { ...input, subject, text } }];"
+      },
+      "id": "fafbb3cc-fcd0-45c7-86e4-bb8873a4954e",
+      "name": "Format notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: {\n  to: $json.body.recipient.email,\n  subject: $json.subject,\n  text: $json.text,\n  eventId: $json.eventId,\n  sentAt: new Date().toISOString()\n} }];"
+      },
+      "id": "2bf2bdef-5197-4a87-8d71-aefee788c111",
+      "name": "Mock send (log)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"eventId\": $json.eventId } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "20ef506e-c5b5-431a-84b5-700b9fa5f5fa",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"deduped\": true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "54e848bd-466e-4849-9922-802126685141",
+      "name": "Respond 200 deduped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1200,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false, \"error\": \"Unauthorized\" } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "e49a7619-c796-40fd-a6d0-47a753905412",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        720,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "Webhook signature verification failed"
+      },
+      "id": "fd617b89-c24c-4b33-b7e8-5dbe41db20f6",
+      "name": "Stop invalid request",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        960,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "For byte-exact verification of the raw body, enable the raw body option on the Webhook node in the real deployment; the LendLoop payload is stringified deterministically (fixed key order from Convex), so JSON.stringify(body) here is equivalent.",
+        "height": 180,
+        "width": 420
+      },
+      "id": "0ed1b5a2-aaea-4a13-b121-c5d404691842",
+      "name": "Raw body verification note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Mock only: this node logs the notification object and sends no email. Replace it with an Email, Slack, or Discord node and configure its real credential for deployment.",
+        "height": 140,
+        "width": 400
+      },
+      "id": "31a593db-aca4-475a-9f3d-34af4d277ee1",
+      "name": "Mock notification note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        40
+      ]
+    }
+  ],
+  "connections": {
+    "Request event webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify HMAC": {
+      "main": [
+        [
+          {
+            "node": "Signature valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature valid?": {
+      "main": [
+        [
+          {
+            "node": "Dedupe by eventId",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe by eventId": {
+      "main": [
+        [
+          {
+            "node": "Already processed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already processed?": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 deduped",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format notification": {
+      "main": [
+        [
+          {
+            "node": "Mock send (log)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock send (log)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 401": {
+      "main": [
+        [
+          {
+            "node": "Stop invalid request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LendLoop — Error handler"
+  },
+  "active": false
+}

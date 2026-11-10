@@ -1,0 +1,254 @@
+{
+  "name": "LendLoop — Overdue reminders (daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "c25ab431-8753-4d74-b845-bb4a5090ebb5",
+      "name": "Daily at 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CONVEX_SITE_URL }}/api/overdue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.CONVEX_HTTP_SECRET }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9b2dc884-4c3e-4615-8987-83cae59c9f98",
+      "name": "Fetch overdue requests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reminderDate = DateTime.now().setZone(\"Asia/Jakarta\").toISODate();\nreturn ($json.overdue || []).map((loan) => ({ json: { ...loan, reminderDate } }));"
+      },
+      "id": "ce6f72b3-e496-41a5-a837-ec451e9ba3c3",
+      "name": "Split overdue list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map(({ json: loan }) => ({ json: {\n  to: loan.borrowerEmail,\n  subject: \"Reminder: \" + loan.itemName + \" is \" + loan.daysOverdue + \" day(s) overdue\",\n  text: \"Hi \" + loan.borrowerName + \", \" + loan.itemName + \" was due on \" + loan.endDate + \" and is \" + loan.daysOverdue + \" day(s) overdue. Please arrange its return.\",\n  requestId: loan.requestId,\n  reminderDate: loan.reminderDate\n} }));"
+      },
+      "id": "0fc6ab3e-bd48-40bf-8351-65b6452e21b2",
+      "name": "Mock send reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const crypto = require(\"crypto\");\nreturn $input.all().map(({ json: reminder }) => {\n  const body = { requestId: reminder.requestId, reminderDate: reminder.reminderDate };\n  const signature = crypto.createHmac(\"sha256\", $env.WEBHOOK_HMAC_SECRET).update(JSON.stringify(body), \"utf8\").digest(\"hex\");\n  return { json: { ...reminder, body, signature } };\n});"
+      },
+      "id": "2be3615a-c006-4df3-9bd1-c8c62c49e5e1",
+      "name": "Sign write-back body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/api/reminders/ack",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ 'sha256=' + $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "927853f5-7de2-4208-9b90-d5d9cd5c2add",
+      "name": "Post reminder acknowledgement",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map(({ json }) => ({ json: {\n  workflow: \"LendLoop — Overdue reminders (daily)\",\n  requestId: json.requestId ?? null,\n  reminderDate: json.reminderDate ?? null,\n  error: json.error?.message ?? json.message ?? \"Acknowledgement failed\",\n  failedNode: \"Post reminder acknowledgement\",\n  at: new Date().toISOString()\n} }));"
+      },
+      "id": "8fb0e9c9-5242-42ff-b330-b49aba96733a",
+      "name": "Record acknowledgement failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 500],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "content": "The Authorization header reads CONVEX_HTTP_SECRET from the environment. For deployment, move it to an n8n credential using Header Auth.",
+        "height": 120,
+        "width": 380
+      },
+      "id": "166c692a-b54a-4e8d-af2f-0f75dabe484c",
+      "name": "Header Auth note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [160, 40]
+    },
+    {
+      "parameters": {
+        "content": "Mock only: this node logs reminder data and sends no email. Replace it with an Email, Slack, or Discord node and configure its real credential.",
+        "height": 120,
+        "width": 400
+      },
+      "id": "dabfd98c-faa4-44f1-a850-8be406d83de8",
+      "name": "Mock reminder note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [640, 40]
+    },
+    {
+      "parameters": {
+        "content": "The acknowledgement is signed over the exact JSON.stringify(body) string sent as raw application/json. Self-hosted n8n Code nodes use Node's built-in crypto module here.",
+        "height": 140,
+        "width": 420
+      },
+      "id": "0f7b9097-5528-4136-9401-85e37585458c",
+      "name": "Write-back signature note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [880, 40]
+    },
+    {
+      "parameters": {
+        "content": "Acknowledgement failures are preserved as items in this execution so other reminders can continue. Unhandled workflow failures invoke the shared Error handler workflow.",
+        "height": 120,
+        "width": 420
+      },
+      "id": "bd42641f-286d-4eac-8883-d47e0cb55f0a",
+      "name": "Failure handling note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1240, 80]
+    }
+  ],
+  "connections": {
+    "Daily at 08:00": {
+      "main": [
+        [
+          {
+            "node": "Fetch overdue requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch overdue requests": {
+      "main": [
+        [
+          {
+            "node": "Split overdue list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split overdue list": {
+      "main": [
+        [
+          {
+            "node": "Mock send reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock send reminder": {
+      "main": [
+        [
+          {
+            "node": "Sign write-back body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign write-back body": {
+      "main": [
+        [
+          {
+            "node": "Post reminder acknowledgement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post reminder acknowledgement": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Record acknowledgement failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "LendLoop — Error handler"
+  },
+  "active": false
+}
