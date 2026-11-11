@@ -1,6 +1,7 @@
 node_modules
 .next
 out
+artifacts/
 .env*.local
 /.env
 *.log
