@@ -3,12 +3,14 @@ import { anyApi } from "convex/server";
 import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server";
 import type * as items from "../items";
 import type * as requests from "../requests";
+import type * as seed from "../seed";
 import type * as users from "../users";
 import type * as webhooks from "../webhooks";
 
 const fullApi = anyApi as unknown as ApiFromModules<{
   items: typeof items;
   requests: typeof requests;
+  seed: typeof seed;
   users: typeof users;
   webhooks: typeof webhooks;
 }>;
