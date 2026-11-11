@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import {
-  ClerkProvider,
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
+import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "LendLoop — Borrow what you need. Lend what you don't.",
@@ -18,31 +20,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
-        <ClerkProvider>
+      <body className={inter.variable}>
+        <ClerkProvider appearance={{ variables: { colorPrimary: "#236A55", borderRadius: "10px" } }}>
           <ConvexClientProvider>
-            <header className="site-header">
-              <div className="container header-content">
-                <Link className="brand" href="/">
-                  <span className="brand-name">LendLoop</span>
-                  <span className="tagline">Borrow what you need. Lend what you don't.</span>
-                </Link>
-                <nav className="nav-links" aria-label="Main navigation">
-                  <Link href="/">Home</Link>
-                  <Link href="/dashboard">Dashboard</Link>
-                  <SignedOut>
-                    <SignInButton mode="modal">
-                      <button className="button button-primary" type="button">
-                        Sign in to lend or borrow
-                      </button>
-                    </SignInButton>
-                  </SignedOut>
-                  <SignedIn>
-                    <UserButton />
-                  </SignedIn>
-                </nav>
-              </div>
-            </header>
+            <SiteHeader />
             <main className="container page-content">{children}</main>
           </ConvexClientProvider>
         </ClerkProvider>
