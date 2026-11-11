@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
 import { CATEGORIES, CONDITIONS, categoryLabel, conditionLabel } from "@/lib/categories";
 import type { Category, Condition } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
@@ -22,7 +22,7 @@ const busyLabels = {
   trust: "Updating…",
 };
 
-type RequestSummary = Pick<Doc<"borrowRequests">, "status" | "endDate" | "returnedAt"> & {
+type RequestSummary = Pick<FunctionReturnType<typeof api.requests.listMine>[number], "status" | "endDate" | "returnedAt"> & {
   lenderName?: string;
   borrowerName?: string;
 };
@@ -82,6 +82,31 @@ function SkeletonCards({ count }: { count: number }) {
 function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return <div className="card empty-state"><h3>{title}</h3><p>{body}</p>{action}</div>;
 }
+
+function RequestSkeletons() {
+  return (
+    <div className="request-list" role="status" aria-label="Loading requests">
+      {Array.from({ length: 3 }, (_, index) => (
+        <div className="card request-card" key={index} aria-hidden="true">
+          <div className="skeleton skel-title" />
+          <div className="skeleton skel-line" />
+          <div className="skeleton skel-line" />
+          <div className="status-strip skeleton" style={{ height: 40 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="table-wrap" role="status" aria-label="Loading rows">
+      {Array.from({ length: 3 }, (_, index) => <div className="skeleton" style={{ height: 44, marginBottom: 8 }} key={index} aria-hidden="true" />)}
+    </div>
+  );
+}
+
+const requestPriority = { overdue: 0, pending: 1, approved: 2, returned: 3, declined: 3, cancelled: 3 };
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${status}`}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>;
@@ -439,26 +464,28 @@ export default function DashboardPage() {
       {activeTab === "my-requests" && (
         <section className="tab-panel" role="tabpanel" id="panel-my-requests" aria-labelledby="tab-my-requests">
           {myRequests === undefined ? (
-            <p className="muted">Loading your requests…</p>
+            <RequestSkeletons />
           ) : myRequests.length === 0 ? (
-            <p className="muted">You haven&apos;t requested an item yet.</p>
+            <EmptyState
+              title="You haven't requested an item yet."
+              body="Find something you need in the catalogue and send a request."
+              action={<button className="text-link" type="button" onClick={() => setActiveTab("browse")}>Browse items</button>}
+            />
           ) : (
-            <div className="grid">
-              {myRequests.map((request) => (
-                <article className="card item-card" key={request._id}>
+            <div className="request-list">
+              {[...myRequests].sort((a, b) => requestPriority[displayStatus(a)] - requestPriority[displayStatus(b)]).map((request) => (
+                <article className="card request-card" key={request._id}>
                   <h2>{request.itemName}</h2>
-                  <p>Lender: {request.lenderName}</p>
-                  <p>{request.startDate} — {request.endDate}</p>
-                  <StatusBadge status={request.status} />
+                  <p className="caption">From {request.lenderName} · <span className="num">{formatDate(request.startDate)} → {formatDate(request.endDate)}</span></p>
                   {request.reminderCount > 0 && (
-                    <p className="muted">
-                      Overdue reminder sent ×{request.reminderCount} · last {request.lastReminderDate ?? "unknown"}
+                    <p className="overdue-note">
+                      ⚠ Overdue — reminder sent ×{request.reminderCount}, last on {request.lastReminderDate ? formatDate(request.lastReminderDate) : "date unknown"}.
                     </p>
                   )}
-                  <div className="form-actions">
-                    {(request.status === "pending" || request.status === "approved") && (
+                  <div className="card-actions">
+                    {request.status === "pending" && (
                       <button className="button button-secondary" type="button" disabled={busyKey === `cancel:${request._id}`} onClick={() => void run(cancelRequest({ requestId: request._id }), "Request cancelled.", `cancel:${request._id}`)}>
-                        {busyKey === `cancel:${request._id}` ? busyLabels.cancel : "Cancel"}
+                        {busyKey === `cancel:${request._id}` ? busyLabels.cancel : "Cancel request"}
                       </button>
                     )}
                     {request.status === "approved" && (
@@ -467,6 +494,7 @@ export default function DashboardPage() {
                       </button>
                     )}
                   </div>
+                  <StatusStrip request={request} context="mine" />
                 </article>
               ))}
             </div>
@@ -477,25 +505,27 @@ export default function DashboardPage() {
       {activeTab === "incoming" && (
         <section className="tab-panel" role="tabpanel" id="panel-incoming" aria-labelledby="tab-incoming">
           {incomingRequests === undefined ? (
-            <p className="muted">Loading incoming requests…</p>
+            <RequestSkeletons />
           ) : incomingRequests.length === 0 ? (
-            <p className="muted">No one has requested your items yet.</p>
+            <EmptyState title="No one has requested your items yet." body="When a neighbour asks to borrow something, it shows up here." />
           ) : (
-            <div className="grid">
+            <div className="request-list">
               {incomingRequests.map((request) => (
-                <article className="card item-card" key={request._id}>
+                <article className="card request-card" key={request._id}>
                   <h2>{request.itemName}</h2>
-                  <p>Borrower: {request.borrowerName}</p>
-                  <p>{request.startDate} — {request.endDate}</p>
-                  <StatusBadge status={request.status} />
-                  <div className="form-actions">
+                  <div className="badge-row">
+                    <span className="caption">Requested by {request.borrowerName}</span>
+                    {request.borrowerTrusted && <span className="trusted-badge">Trusted Lender</span>}
+                    <span className="caption num">· {formatDate(request.startDate)} → {formatDate(request.endDate)}</span>
+                  </div>
+                  <div className="card-actions">
                     {request.status === "pending" && (
                       <>
-                        <button className="button button-primary" type="button" disabled={busyKey === `approve:${request._id}`} onClick={() => void run(approveRequest({ requestId: request._id }), "Request approved.", `approve:${request._id}`)}>
-                          {busyKey === `approve:${request._id}` ? busyLabels.approve : "Approve"}
-                        </button>
                         <button className="button button-secondary" type="button" disabled={busyKey === `decline:${request._id}`} onClick={() => void run(declineRequest({ requestId: request._id }), "Request declined.", `decline:${request._id}`)}>
                           {busyKey === `decline:${request._id}` ? busyLabels.decline : "Decline"}
+                        </button>
+                        <button className="button button-primary" type="button" disabled={busyKey === `approve:${request._id}`} onClick={() => void run(approveRequest({ requestId: request._id }), "Request approved.", `approve:${request._id}`)}>
+                          {busyKey === `approve:${request._id}` ? busyLabels.approve : "Approve"}
                         </button>
                       </>
                     )}
@@ -505,6 +535,7 @@ export default function DashboardPage() {
                       </button>
                     )}
                   </div>
+                  <StatusStrip request={request} context="incoming" />
                 </article>
               ))}
             </div>
@@ -515,25 +546,27 @@ export default function DashboardPage() {
       {activeTab === "admin" && isAdmin && (
         <section className="tab-panel admin-panel" role="tabpanel" id="panel-admin" aria-labelledby="tab-admin">
           <section className="card admin-section">
-            <h2>All loans</h2>
+            <div className="admin-section-heading">
+              <h2>All loans</h2>
+              {adminLoans !== undefined && <span className="caption num">{adminLoans.length} loans</span>}
+            </div>
             {adminLoans === undefined ? (
-              <p className="muted">Loading loans…</p>
-            ) : adminLoans.length === 0 ? (
-              <p className="muted">No loans yet.</p>
+              <TableSkeleton />
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Item</th><th>Borrower</th><th>Lender</th><th>Dates</th><th>Status</th></tr>
+                    <tr><th>Item</th><th>Borrower</th><th>Lender</th><th>Dates</th><th>Status</th><th>Reminders</th></tr>
                   </thead>
                   <tbody>
-                    {adminLoans.map((loan) => (
-                      <tr key={loan._id}>
+                    {adminLoans.length === 0 ? <tr><td colSpan={6}>No loans yet.</td></tr> : adminLoans.map((loan) => (
+                      <tr className={displayStatus(loan) === "overdue" ? "loan-overdue" : undefined} key={loan._id}>
                         <td>{loan.itemName}</td>
                         <td>{loan.borrowerName}</td>
                         <td>{loan.lenderName}</td>
-                        <td>{loan.startDate} — {loan.endDate}</td>
-                        <td><StatusBadge status={loan.status} /></td>
+                        <td className="num">{formatDate(loan.startDate)} → {formatDate(loan.endDate)}</td>
+                        <td><StatusBadge status={displayStatus(loan)} /></td>
+                        <td className={`num${loan.reminderCount > 0 ? " overdue-reminders" : ""}`}>{loan.reminderCount}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -543,29 +576,28 @@ export default function DashboardPage() {
           </section>
 
           <section className="card admin-section">
-            <h2>Users</h2>
+            <div className="admin-section-heading">
+              <h2>Users</h2>
+              {users !== undefined && <span className="caption num">{users.length} users</span>}
+            </div>
             {users === undefined ? (
-              <p className="muted">Loading users…</p>
-            ) : users.length === 0 ? (
-              <p className="muted">No users found.</p>
+              <TableSkeleton />
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Name</th><th>Email</th><th>Role</th><th>Trusted lender</th><th>Action</th></tr>
+                    <tr><th>Name</th><th>Email</th><th>Role</th><th>Trusted lender</th><th style={{ textAlign: "right" }}>Action</th></tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
+                    {users.length === 0 ? <tr><td colSpan={5}>No users found.</td></tr> : users.map((user) => (
                       <tr key={user._id}>
                         <td>{user.name}</td>
                         <td>{user.email}</td>
-                        <td>{user.role}</td>
+                        <td><span className={user.role === "admin" ? "badge" : "badge condition"}>{user.role}</span></td>
                         <td>
-                          <span className={`trusted-badge ${user.trustedLender ? "" : "untrusted"}`}>
-                            {user.trustedLender ? "Trusted Lender" : "Not trusted"}
-                          </span>
+                          {user.trustedLender ? <span className="trusted-badge">Trusted Lender</span> : <span className="muted">Not trusted</span>}
                         </td>
-                        <td>
+                        <td style={{ textAlign: "right" }}>
                           <button
                             className="button button-secondary"
                             type="button"
@@ -585,13 +617,16 @@ export default function DashboardPage() {
           </section>
 
           <section className="card admin-section">
-            <h2>Delete any listing</h2>
+            <div className="admin-section-heading">
+              <h2>Delete any listing</h2>
+              {items !== undefined && <span className="caption num">{items.length} listings</span>}
+            </div>
             {items === undefined ? (
-              <p className="muted">Loading listings…</p>
+              <TableSkeleton />
             ) : items.length === 0 ? (
-              <p className="muted">No listings found.</p>
+              <EmptyState title="No listings found." body="Items listed by neighbours will appear here." />
             ) : (
-              <div className="grid">
+              <div className="request-list">
                 {items.map((item) => (
                   <article className="admin-listing" key={item._id}>
                     <div>
@@ -613,6 +648,27 @@ export default function DashboardPage() {
           </section>
         </section>
       )}
+      <style jsx global>{`
+        .request-list {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 16px;
+        }
+        .request-card > h2,
+        .request-card > p { margin: 0; }
+        .request-card > .card-actions { justify-content: flex-end; }
+        .admin-panel > .admin-section { padding: 24px; }
+        .admin-section-heading {
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .admin-section-heading > h2 { margin: 0; }
+        tr.loan-overdue td:first-child { box-shadow: inset 3px 0 var(--st-overdue-t); }
+        .overdue-reminders { color: var(--st-overdue-t); font-weight: 600; }
+      `}</style>
     </section>
   );
 }

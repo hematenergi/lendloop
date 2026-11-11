@@ -119,6 +119,7 @@ export const listIncoming = query({
         ...request,
         itemName: item?.name ?? "Deleted item",
         borrowerName: borrower?.name ?? "Unknown neighbour",
+        borrowerTrusted: borrower?.trustedLender ?? false,
       };
     }));
   },
