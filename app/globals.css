@@ -556,7 +556,30 @@ textarea[aria-invalid="true"] {
 }
 
 .filter-row {
-  width: min(100%, 320px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.filter-row label {
+  width: 240px;
+}
+
+.listing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.listing-row strong {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.listing-row > .button {
+  flex-shrink: 0;
 }
 
 .hero-actions,
@@ -674,6 +697,15 @@ textarea[aria-invalid="true"] {
   text-underline-offset: 3px;
 }
 
+button.text-link {
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 .landing-footer {
   margin-top: 64px;
   padding-block: 24px;
@@ -747,6 +779,21 @@ textarea[aria-invalid="true"] {
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .filter-row,
+  .listing-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-row label {
+    width: 100%;
+  }
+
+  .card .form-actions > .button,
+  .listing-row > .button {
+    width: 100%;
   }
 
   .card-actions {
