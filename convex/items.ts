@@ -3,7 +3,13 @@ import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { getCurrentUser } from "./lib/auth";
-import { CATEGORY_VALUES } from "./lib/shared";
+import { CATEGORY_VALUES, ITEM_NAME_MAX_LENGTH } from "./lib/shared";
+
+function validateName(name: string) {
+  if (!name.trim()) throw new ConvexError("Name is required");
+  if (name.length > ITEM_NAME_MAX_LENGTH) throw new ConvexError("Name is too long");
+  return name.trim();
+}
 
 async function withAvailability(ctx: QueryCtx, item: Doc<"items">) {
   const requests = await ctx.db
@@ -63,14 +69,14 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    if (!args.name.trim()) throw new ConvexError("Name is required");
+    const name = validateName(args.name);
     if (!args.description.trim()) throw new ConvexError("Description is required");
     if (!CATEGORY_VALUES.includes(args.category as (typeof CATEGORY_VALUES)[number])) {
       throw new ConvexError("Invalid category");
     }
     return ctx.db.insert("items", {
       ownerId: user._id,
-      name: args.name.trim(),
+      name,
       category: args.category,
       condition: args.condition,
       description: args.description.trim(),
@@ -93,7 +99,7 @@ export const update = mutation({
     if (!item) throw new ConvexError("Item not found");
     // Admins may remove another person's listing, but only its owner may edit it.
     if (item.ownerId !== user._id) throw new ConvexError("Forbidden: only the owner can edit this item");
-    if (args.name !== undefined && !args.name.trim()) throw new ConvexError("Name is required");
+    const name = args.name === undefined ? undefined : validateName(args.name);
     if (args.description !== undefined && !args.description.trim()) {
       throw new ConvexError("Description is required");
     }
@@ -102,7 +108,7 @@ export const update = mutation({
     }
 
     const patch: Partial<Pick<Doc<"items">, "name" | "category" | "condition" | "description">> = {};
-    if (args.name !== undefined) patch.name = args.name.trim();
+    if (name !== undefined) patch.name = name;
     if (args.category !== undefined) patch.category = args.category;
     if (args.condition !== undefined) patch.condition = args.condition;
     if (args.description !== undefined) patch.description = args.description.trim();

@@ -511,6 +511,10 @@ textarea[aria-invalid="true"] {
   border-color: var(--line-strong);
 }
 
+.item-card-requesting {
+  grid-column: 1 / -1;
+}
+
 .item-card h2,
 .item-card h3,
 .item-card .description {
@@ -553,6 +557,17 @@ textarea[aria-invalid="true"] {
 .request-form {
   width: 100%;
   padding-top: 8px;
+}
+
+.request-form .form-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 440px;
+}
+
+.request-form input[type="date"] {
+  min-width: 0;
+  padding-inline: 4px;
 }
 
 .filter-row {

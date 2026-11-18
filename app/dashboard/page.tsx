@@ -1,10 +1,14 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAuth } from "@clerk/nextjs";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { ConvexError } from "convex/values";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
+import { ITEM_NAME_MAX_LENGTH } from "@/convex/lib/shared";
 import { CATEGORIES, CONDITIONS, categoryLabel, conditionLabel } from "@/lib/categories";
 import type { Category, Condition } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
@@ -113,10 +117,70 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  switch (error instanceof ConvexError ? error.data : undefined) {
+    case "Start date cannot be in the past":
+      return "Choose a start date of today or later.";
+    case "Start and end dates must be valid, with end on or after start":
+      return "Enter valid dates and choose an end date on or after the start date.";
+    case "Overlapping pending request":
+      return "You already have a pending request for this item during those dates. Choose different dates or check My requests.";
+    case "Item is already booked for part of that range":
+      return "This item is booked for part of that date range. Choose different dates.";
+    case "Name is required":
+      return "Enter a name for your listing.";
+    case "Name is too long":
+      return `Use ${ITEM_NAME_MAX_LENGTH} characters or fewer for your listing name.`;
+    case "Description is required":
+      return "Enter a description for your listing.";
+    case "Invalid category":
+      return "Choose a category from the list.";
+    default:
+      return "We couldn’t complete that action. Please try again.";
+  }
+}
+
+function DashboardLoading({ error }: { error?: string }) {
+  return (
+    <section aria-busy={!error} aria-label="Dashboard">
+      {error ? (
+        <>
+          <p className="error" role="alert">⚠ {error}</p>
+          <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Try again</button>
+        </>
+      ) : (
+        <>
+          <div className="skeleton skel-title" aria-hidden="true" />
+          <div className="tabs" aria-hidden="true">
+            {Array.from({ length: 4 }, (_, index) => <div className="skeleton skel-badge" key={index} />)}
+          </div>
+          <SkeletonCards count={3} />
+        </>
+      )}
+    </section>
+  );
 }
 
 export default function DashboardPage() {
+  const { isLoaded, isSignedIn, sessionId } = useAuth();
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const router = useRouter();
+  const hadSession = useRef(false);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn) {
+      hadSession.current = true;
+    } else {
+      router.replace(hadSession.current ? "/" : "/sign-in");
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  if (!isLoaded || !isSignedIn || isLoading) return <DashboardLoading />;
+  if (!isAuthenticated) return <DashboardLoading error="We couldn’t connect your session. Please try again." />;
+  return <DashboardContent key={sessionId} />;
+}
+
+function DashboardContent() {
   const ensureMe = useMutation(api.users.ensureMe);
   const createItem = useMutation(api.items.create);
   const removeItem = useMutation(api.items.remove);
@@ -142,14 +206,12 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const setupStarted = useRef(false);
-
   useEffect(() => {
-    if (setupStarted.current) return;
-    setupStarted.current = true;
+    let active = true;
     ensureMe()
-      .then(() => setReady(true))
-      .catch((reason: unknown) => setError(messageFrom(reason)));
+      .then(() => { if (active) setReady(true); })
+      .catch((reason: unknown) => { if (active) setError(messageFrom(reason)); });
+    return () => { active = false; };
   }, [ensureMe]);
 
   useEffect(() => {
@@ -183,26 +245,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (!ready || me === undefined) {
-    return (
-      <section aria-busy={!error} aria-label="Dashboard">
-        {error ? (
-          <>
-            <p className="error" role="alert">⚠ {error}</p>
-            <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Try again</button>
-          </>
-        ) : (
-          <>
-            <div className="skeleton skel-title" aria-hidden="true" />
-            <div className="tabs" aria-hidden="true">
-              {Array.from({ length: 4 }, (_, index) => <div className="skeleton skel-badge" key={index} />)}
-            </div>
-            <SkeletonCards count={3} />
-          </>
-        )}
-      </section>
-    );
-  }
+  if (!ready || !me) return <DashboardLoading error={error} />;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "browse", label: "Browse" },
@@ -264,7 +307,7 @@ export default function DashboardPage() {
               {visibleItems?.map((item) => {
                 const isMine = item.ownerId === me?._id;
                 return (
-                  <article className="card item-card" key={item._id}>
+                  <article className={requestingItemId === item._id ? "card item-card item-card-requesting" : "card item-card"} key={item._id}>
                     <h2>{item.name}</h2>
                     <div className="badge-row">
                       <span className="badge">{categoryLabel(item.category)}</span>
@@ -325,9 +368,9 @@ export default function DashboardPage() {
                                     setRequestError("");
                                   }}
                                 />
-                                {requestError && <span className="field-error" id={`request-error-${item._id}`}>{requestError}</span>}
                               </label>
                             </div>
+                            {requestError && <span className="field-error" id={`request-error-${item._id}`} role="alert">{requestError}</span>}
                             <div className="form-actions card-actions">
                               <button className="button button-primary" type="submit" disabled={busyKey === `request:${item._id}`}>
                                 {busyKey === `request:${item._id}` ? busyLabels.request : "Send request"}
@@ -387,6 +430,7 @@ export default function DashboardPage() {
                 Name
                 <input
                   required
+                  maxLength={ITEM_NAME_MAX_LENGTH}
                   value={itemForm.name}
                   onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })}
                 />

@@ -8,6 +8,7 @@ services:
       - "5678:5678"
     environment:
       GENERIC_TIMEZONE: Asia/Jakarta
+      WEBHOOK_URL: https://mac-mini-m4.tailf3f22d.ts.net:10001/
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET}
       CONVEX_HTTP_SECRET: ${CONVEX_HTTP_SECRET}

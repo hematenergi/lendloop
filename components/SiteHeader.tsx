@@ -1,6 +1,6 @@
 "use client";
 
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { Show, SignInButton, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -20,21 +20,21 @@ export default function SiteHeader() {
         </div>
         <nav className="nav-links" aria-label="Main navigation">
           <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>Home</Link>
-          <SignedIn>
+          <Show when="signed-in">
             <Link href="/dashboard" aria-current={pathname === "/dashboard" ? "page" : undefined}>
               Dashboard
             </Link>
-          </SignedIn>
+          </Show>
         </nav>
         <div className="header-actions">
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="button button-primary" type="button">Sign in</button>
             </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <UserButton />
-          </SignedIn>
+          </Show>
         </div>
       </div>
     </header>

@@ -9,3 +9,5 @@ export const CATEGORY_VALUES = [
 ] as const;
 
 export const CONDITION_VALUES = ["new", "good", "fair", "worn"] as const;
+
+export const ITEM_NAME_MAX_LENGTH = 80;

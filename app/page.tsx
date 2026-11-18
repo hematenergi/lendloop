@@ -1,6 +1,6 @@
 "use client";
 
-import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
@@ -17,16 +17,16 @@ export default function HomePage() {
         <p className="hero-tagline">Borrow what you need. Lend what you don&apos;t.</p>
         <p className="hero-description">Neighbours sharing the tools and equipment they only use once in a while.</p>
         <div className="hero-actions">
-          <SignedOut>
+          <Show when="signed-out">
             <Link className="button button-primary" href="/sign-in">
               Sign in to lend or borrow
             </Link>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <Link className="button button-primary" href="/dashboard">
               Go to dashboard
             </Link>
-          </SignedIn>
+          </Show>
         </div>
       </section>
 
@@ -50,26 +50,28 @@ export default function HomePage() {
           <div className="card empty-state">
             <h3>Nothing listed yet</h3>
             <p>Be the first to lend something — sign in and list a tool you rarely use.</p>
-            <SignedOut>
+            <Show when="signed-out">
               <Link className="button button-primary" href="/sign-in">Sign in to lend or borrow</Link>
-            </SignedOut>
-            <SignedIn>
+            </Show>
+            <Show when="signed-in">
               <Link className="button button-primary" href="/dashboard">Go to dashboard</Link>
-            </SignedIn>
+            </Show>
           </div>
         ) : (
           <div className="grid">
             {items.map((item, index) => (
-              <article className="card item-card" key={`${item.name}-${item.category}-${index}`}>
+              <Link className="card item-card" href="/dashboard" key={`${item.name}-${item.category}-${index}`}>
                 <h3 className="clamp-2">{item.name}</h3>
                 <span className="badge">{categoryLabel(item.category)}</span>
-              </article>
+              </Link>
             ))}
           </div>
         )}
-        <p className="muted catalog-note">
-          <Link className="text-link" href="/sign-in">Sign in</Link> to see details, availability and to request an item.
-        </p>
+        <Show when="signed-out">
+          <p className="muted catalog-note">
+            <Link className="text-link" href="/sign-in">Sign in</Link> to see details, availability and to request an item.
+          </p>
+        </Show>
       </section>
       <footer className="landing-footer caption">
         <span className="footer-brand">LendLoop</span>

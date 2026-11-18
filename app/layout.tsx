@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={inter.variable}>
-        <ClerkProvider appearance={{ variables: { colorPrimary: "#236A55", borderRadius: "10px" } }}>
+        <ClerkProvider afterSignOutUrl="/" appearance={{ variables: { colorPrimary: "#236A55", borderRadius: "10px" } }}>
           <ConvexClientProvider>
             <SiteHeader />
             <main className="container page-content">{children}</main>

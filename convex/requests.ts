@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -28,17 +28,16 @@ async function scheduleRequestEvent(
   });
 }
 
-async function hasApprovedOverlap(
-  ctx: QueryCtx | MutationCtx,
-  itemId: Id<"items">,
+function requestsForItem(ctx: QueryCtx | MutationCtx, itemId: Id<"items">) {
+  return ctx.db.query("borrowRequests").withIndex("by_item", (q) => q.eq("itemId", itemId)).collect();
+}
+
+function hasApprovedOverlap(
+  requests: Doc<"borrowRequests">[],
   startDate: string,
   endDate: string,
   exceptId?: Id<"borrowRequests">,
 ) {
-  const requests = await ctx.db
-    .query("borrowRequests")
-    .withIndex("by_item", (q) => q.eq("itemId", itemId))
-    .collect();
   return requests.some((request) =>
     request._id !== exceptId &&
     request.status === "approved" &&
@@ -57,8 +56,15 @@ export const create = mutation({
       throw new ConvexError("Start and end dates must be valid, with end on or after start");
     }
     if (args.startDate < todayISO()) throw new ConvexError("Start date cannot be in the past");
-    if (await hasApprovedOverlap(ctx, item._id, args.startDate, args.endDate)) {
+    const requests = await requestsForItem(ctx, item._id);
+    if (hasApprovedOverlap(requests, args.startDate, args.endDate)) {
       throw new ConvexError("Item is already booked for part of that range");
+    }
+    if (requests.some((request) =>
+      request.status === "pending" && request.borrowerId === borrower._id &&
+      overlaps(args.startDate, args.endDate, request.startDate, request.endDate),
+    )) {
+      throw new ConvexError("Overlapping pending request");
     }
 
     const now = Date.now();
@@ -154,7 +160,8 @@ export const approve = mutation({
     if (!request) throw new ConvexError("Request not found");
     if (request.lenderId !== user._id) throw new ConvexError("Forbidden: lender only");
     if (request.status !== "pending") throw new ConvexError("Only pending requests can be approved");
-    if (await hasApprovedOverlap(ctx, request.itemId, request.startDate, request.endDate, request._id)) {
+    const requests = await requestsForItem(ctx, request.itemId);
+    if (hasApprovedOverlap(requests, request.startDate, request.endDate, request._id)) {
       throw new ConvexError("Item is already booked for part of that range");
     }
 
